@@ -2,6 +2,7 @@
 <html lang="ja">
   <!-- Firebase SDK（互換版）-->
   <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
   <!-- QRコード生成ライブラリ -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -626,6 +627,63 @@
       }
     }
 
+
+    /* 授業ルーム */
+    .room-bar {
+      margin: 10px 16px 0;
+      padding: 10px 12px;
+      border: 1px solid #d4d4d8;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.92);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px 12px;
+    }
+    .room-status {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+    }
+    .room-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.95rem;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+    }
+    .role-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #e5e5e5;
+      color: #404040;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    .room-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+    .room-actions input {
+      width: 112px;
+      min-width: 112px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .room-notice {
+      flex-basis: 100%;
+      margin: 0;
+      color: #71717a;
+      font-size: 0.74rem;
+      line-height: 1.5;
+    }
+
   </style>
 </head>
 
@@ -641,7 +699,7 @@
     </button>
   </h1>
   <!-- ダミーフォーム: Enter で勝手に送信されないように -->
-  <form class="toolbar" onsubmit="return false;">
+  <form id="teacherTools" class="toolbar" onsubmit="return false;" hidden>
     <div class="toolbar-group">
       <label for="apiKey">Gemini APIキー（この端末のみ）</label>
       <input id="apiKey" type="password" placeholder="AIza..." autocomplete="off" autocapitalize="off" spellcheck="false" />
@@ -655,6 +713,21 @@
     </button>
   </form>
 </header>
+
+<section id="roomBar" class="room-bar" aria-label="授業ルーム">
+  <div class="room-status">
+    <span>授業コード:</span>
+    <span id="roomCodeLabel" class="room-code">未参加</span>
+    <span id="roleBadge" class="role-badge">準備中</span>
+  </div>
+  <div class="room-actions">
+    <button id="createRoomBtn" class="btn-primary" type="button">新しい授業を始める</button>
+    <input id="joinRoomInput" type="text" maxlength="6" placeholder="授業コード" aria-label="授業コード" />
+    <button id="joinRoomBtn" class="btn-ghost" type="button">参加</button>
+    <button id="copyStudentUrlBtn" class="btn-ghost" type="button" hidden>生徒用URLをコピー</button>
+  </div>
+  <p id="roomNotice" class="room-notice">新しい授業を作るか、先生から示された授業コード・QRコードで参加してください。</p>
+</section>
 
 <main>
   <!-- 入力パネル -->
@@ -744,9 +817,9 @@
 
     <hr style="margin:10px 0; border:none; border-top:1px dashed #e2e8f0;" />
 
-    <p class="hint">
-      上の「分類する」ボタンを押すと、すべてのデータを Gemini が
-      <span class="badge">カテゴリ分類</span>します。
+    <p id="teacherHint" class="hint" hidden>
+      教員モードでは、上の「分類する」ボタンからすべてのデータを Gemini で
+      <span class="badge">カテゴリ分類</span>できます。
     </p>
   </section>
 
@@ -756,9 +829,9 @@
 
     <!-- 保存・削除・いいねリセットボタン -->
     <div class="field-row" style="justify-content:flex-end; margin-bottom:4px;">
-      <button id="exportBtn" class="btn-ghost" type="button">💾 全データを保存</button>
-      <button id="resetLikesBtn" class="btn-ghost" type="button">💗 いいねをリセット</button>
-      <button id="clearBtn" class="btn-ghost-danger" type="button">🗑 全データを削除</button>
+      <button id="exportBtn" class="btn-ghost" type="button" hidden>💾 全データを保存</button>
+      <button id="resetLikesBtn" class="btn-ghost" type="button" hidden>💗 いいねをリセット</button>
+      <button id="clearBtn" class="btn-ghost-danger" type="button" hidden>🗑 全データを削除</button>
     </div>
 
     <p class="hint" id="boardHint">
@@ -787,18 +860,20 @@
     <ul>
       <li>班・ニクロム線の太さと長さ・電池のつなぎ方・水温・電圧・電流をまとめて記録できます。</li>
       <li>開始値と終了値から、上昇温度と平均電圧・平均電流を用いた電力を表示します。</li>
-      <li>入力したデータを黒板風のボードに共有し、いいね・削除・CSV保存ができます。</li>
+      <li>授業ごとに専用ルームを作り、生徒は授業コードまたはQRコードから参加できます。授業間でデータは分離されます。</li>
+      <li>生徒は入力・閲覧・いいねができ、授業を作成した教員だけが削除・CSV保存・分類・リセットを行えます。</li>
       <li>Gemini APIキーとカテゴリを指定すると、記録内容を指定したカテゴリへ分類できます。入力したGeminiキーはFirestoreやCSVには保存しません。</li>
       <li>左上のQRアイコンから、このアプリの参加用URLを大きなQRコードで表示できます。</li>
     </ul>
     <h3>使い方</h3>
     <ol>
-      <li>必要に応じて名前と班を選び、ニクロム線・電池・測定値を入力します。</li>
-      <li>「データを送る」を押すと、共有ボードへ記録が追加されます。</li>
+      <li>教員は「新しい授業を始める」を押します。生徒には表示された授業コードまたはQRコードを示します。</li>
+      <li>生徒はQRコードから開くか授業コードを入力して参加し、名前・班・ニクロム線・電池・測定値を入力します。</li>
+      <li>「データを送る」を押すと、その授業専用の共有ボードへ記録が追加されます。</li>
       <li>AIで整理する場合はGemini APIキーとカテゴリ一覧を入力し、「分類する」を押します。</li>
       <li>「全データを保存」でCSVを書き出せます。「いいねをリセット」「全データを削除」は共有データ全体に作用します。</li>
     </ol>
-    <p>授業で利用するときは、全データ削除やAPIキーの取り扱いに注意してください。共通のGeminiキーを生徒へ配布する運用は避け、共有運用ではFirebase AI Logic + App Checkなど、キーをクライアントへ露出しない構成を推奨します。</p>
+    <p>教員権限は、授業を作成したブラウザのFirebase匿名認証IDに紐づきます。ブラウザのサイトデータを消去すると、その授業の教員権限を失うため注意してください。Gemini APIキーは各教員自身のものを使用し、生徒へ配布しないでください。</p>
     <div class="help-actions">
       <button id="helpClose" class="btn-ghost" type="button">閉じる</button>
     </div>
@@ -809,21 +884,32 @@
 
 <script>
   // ==== QRコード表示 ====
-  const QR_URL = "https://scd-ku.github.io/dennetsusen/";
   const qrButton = document.getElementById("qrButton");
   const qrOverlay = document.getElementById("qrOverlay");
   const qrClose = document.getElementById("qrClose");
   const qrContainer = document.getElementById("qrContainer");
-  let qrInstance = null;
+
+  function getStudentUrl() {
+    if (!currentRoomId) return null;
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.hash = "";
+    url.searchParams.set("room", currentRoomId);
+    return url.toString();
+  }
 
   qrButton.addEventListener("click", () => {
-    if (!qrInstance) {
-      qrInstance = new QRCode(qrContainer, {
-        text: QR_URL,
-        width: 360,
-        height: 360
-      });
+    const studentUrl = getStudentUrl();
+    if (!studentUrl) {
+      alert("先に授業を作成するか、授業コードで参加してください。");
+      return;
     }
+    qrContainer.innerHTML = "";
+    new QRCode(qrContainer, {
+      text: studentUrl,
+      width: 360,
+      height: 360
+    });
     qrOverlay.classList.add("active");
   });
 
@@ -879,7 +965,22 @@
   };
 
   firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
   const db = firebase.firestore();
+
+  let currentUser = null;
+  let currentRoomId = null;
+  let isTeacher = false;
+  let unsubscribeNotes = null;
+
+  function roomRef(roomId = currentRoomId) {
+    return db.collection("rooms").doc(roomId);
+  }
+
+  function notesCollection() {
+    if (!currentRoomId) throw new Error("授業ルームに参加していません。");
+    return roomRef().collection("notes");
+  }
 
   // ==== データ管理 ====
   const notes = [];
@@ -917,41 +1018,207 @@
   const boardEl = document.getElementById("board");
   const boardHint = document.getElementById("boardHint");
 
-  let noteCounter = 1;
+  const teacherTools = document.getElementById("teacherTools");
+  const teacherHint = document.getElementById("teacherHint");
+  const roomCodeLabel = document.getElementById("roomCodeLabel");
+  const roleBadge = document.getElementById("roleBadge");
+  const roomNotice = document.getElementById("roomNotice");
+  const createRoomBtn = document.getElementById("createRoomBtn");
+  const joinRoomInput = document.getElementById("joinRoomInput");
+  const joinRoomBtn = document.getElementById("joinRoomBtn");
+  const copyStudentUrlBtn = document.getElementById("copyStudentUrlBtn");
+
   const GEMINI_MODEL = "gemini-2.5-flash";
 
-  // ==== Firestore の notes コレクションをリアルタイムで監視 ====
-  db.collection("notes").orderBy("createdAt")
-    .onSnapshot((snapshot) => {
-      notes.length = 0;
-      snapshot.forEach((doc) => {
-        const d = doc.data();
-        const createdAt =
-          d.createdAt && d.createdAt.toDate ? d.createdAt.toDate() : null;
+  // ==== 授業ルーム / 匿名認証 ====
+  const ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-        notes.push({
-          id: d.id,
-          name: d.name,
-          team: d.team || "",
-          text: d.text || "",
-          category: d.category || "未分類",
-          createdAt,
-          nichrome: d.nichrome || [],
-          nichromeLength: d.nichromeLength || null,
-          battery: d.battery || [],
-          measure: d.measure || null,
-          likes: d.likes || 0
+  function generateRoomId(length = 6) {
+    const values = new Uint32Array(length);
+    crypto.getRandomValues(values);
+    return Array.from(values, v => ROOM_ALPHABET[v % ROOM_ALPHABET.length]).join("");
+  }
+
+  function setRoomInUrl(roomId) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("room", roomId);
+    url.hash = "";
+    history.replaceState(null, "", url);
+  }
+
+  function updateRoomUi() {
+    const hasRoom = Boolean(currentRoomId);
+    roomCodeLabel.textContent = currentRoomId || "未参加";
+    roleBadge.textContent = !hasRoom ? "未参加" : (isTeacher ? "教員モード" : "生徒モード");
+    teacherTools.hidden = !isTeacher;
+    teacherHint.hidden = !isTeacher;
+    exportBtn.hidden = !isTeacher;
+    resetLikesBtn.hidden = !isTeacher;
+    clearBtn.hidden = !isTeacher;
+    copyStudentUrlBtn.hidden = !isTeacher;
+    addBtn.disabled = !hasRoom;
+
+    if (!hasRoom) {
+      roomNotice.textContent = "新しい授業を作るか、先生から示された授業コード・QRコードで参加してください。";
+    } else if (isTeacher) {
+      roomNotice.textContent = "このブラウザが授業の教員です。QRコードを生徒に提示してください。ブラウザのサイトデータを消去すると教員権限を失います。";
+    } else {
+      roomNotice.textContent = "この授業に参加しています。データ入力・閲覧・いいねができます。";
+    }
+  }
+
+  function stopNotesListener() {
+    if (unsubscribeNotes) {
+      unsubscribeNotes();
+      unsubscribeNotes = null;
+    }
+    notes.length = 0;
+    renderBoard();
+  }
+
+  function startNotesListener() {
+    stopNotesListener();
+    if (!currentRoomId) return;
+
+    unsubscribeNotes = notesCollection().orderBy("createdAt")
+      .onSnapshot((snapshot) => {
+        notes.length = 0;
+        snapshot.forEach((doc) => {
+          const d = doc.data();
+          const createdAt =
+            d.createdAt && d.createdAt.toDate ? d.createdAt.toDate() : null;
+
+          notes.push({
+            docId: doc.id,
+            id: d.id || doc.id.slice(0, 8).toUpperCase(),
+            name: d.name,
+            team: d.team || "",
+            text: d.text || "",
+            category: d.category || "未分類",
+            createdAt,
+            nichrome: d.nichrome || [],
+            nichromeLength: d.nichromeLength || null,
+            battery: d.battery || [],
+            measure: d.measure || null,
+            likes: d.likes || 0
+          });
         });
+        renderBoard();
+      }, (error) => {
+        console.error(error);
+        boardHint.textContent = "データを読み込めません。Firebaseの認証設定・Security Rulesを確認してください。";
       });
+  }
 
-      const maxNum = notes.reduce((max, n) => {
-        const num = parseInt(n.id.slice(1), 10);
-        return isNaN(num) ? max : Math.max(max, num);
-      }, 0);
-      noteCounter = maxNum + 1;
+  async function loadRoom(roomId) {
+    if (!currentUser) return;
+    const normalized = String(roomId || "").trim().toUpperCase();
+    if (!/^[A-Z2-9]{6}$/.test(normalized)) {
+      alert("授業コードは6文字です。");
+      return;
+    }
 
-      renderBoard();
+    const snap = await roomRef(normalized).get();
+    if (!snap.exists) {
+      alert("指定された授業が見つかりません。");
+      return;
+    }
+
+    currentRoomId = normalized;
+    isTeacher = snap.data().ownerUid === currentUser.uid;
+    joinRoomInput.value = normalized;
+    setRoomInUrl(normalized);
+    updateRoomUi();
+    startNotesListener();
+  }
+
+  async function createRoom() {
+    if (!currentUser) {
+      alert("Firebaseの準備中です。");
+      return;
+    }
+
+    createRoomBtn.disabled = true;
+    try {
+      let roomId = null;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const candidate = generateRoomId();
+        const ref = roomRef(candidate);
+        const snap = await ref.get();
+        if (!snap.exists) {
+          await ref.set({
+            ownerUid: currentUser.uid,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            app: "dennetsusen"
+          });
+          roomId = candidate;
+          break;
+        }
+      }
+      if (!roomId) throw new Error("授業コードを作成できませんでした。");
+      await loadRoom(roomId);
+      alert("授業を作成しました。左上のQRアイコンから生徒用QRコードを表示できます。");
+    } catch (error) {
+      console.error(error);
+      alert("授業を作成できませんでした。Firebase Authenticationの匿名認証とSecurity Rulesを確認してください。");
+    } finally {
+      createRoomBtn.disabled = false;
+    }
+  }
+
+  createRoomBtn.addEventListener("click", createRoom);
+
+  joinRoomBtn.addEventListener("click", () => {
+    loadRoom(joinRoomInput.value).catch((error) => {
+      console.error(error);
+      alert("授業への参加中にエラーが発生しました。");
     });
+  });
+
+  joinRoomInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      joinRoomBtn.click();
+    }
+  });
+
+  copyStudentUrlBtn.addEventListener("click", async () => {
+    const url = getStudentUrl();
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      alert("生徒用URLをコピーしました。");
+    } catch {
+      prompt("このURLをコピーしてください。", url);
+    }
+  });
+
+  auth.onAuthStateChanged(async (user) => {
+    if (!user) {
+      try {
+        await auth.signInAnonymously();
+      } catch (error) {
+        console.error(error);
+        roleBadge.textContent = "設定が必要";
+        roomNotice.textContent = "Firebase Authenticationで匿名認証を有効にしてください。";
+        addBtn.disabled = true;
+      }
+      return;
+    }
+
+    currentUser = user;
+    const roomFromUrl = new URL(window.location.href).searchParams.get("room");
+    if (roomFromUrl) {
+      try {
+        await loadRoom(roomFromUrl);
+      } catch (error) {
+        console.error(error);
+        roomNotice.textContent = "授業を読み込めませんでした。";
+      }
+    } else {
+      updateRoomUi();
+    }
+  });
 
   // ==== データを追加（Firestoreに保存） ====
   addBtn.addEventListener("click", async () => {
@@ -985,14 +1252,19 @@
       }
     };
 
-    const id = `N${String(noteCounter).padStart(3, "0")}`;
-    noteCounter++;
+    if (!currentRoomId) {
+      alert("先に授業へ参加してください。");
+      return;
+    }
+
+    const docRef = notesCollection().doc();
+    const id = docRef.id.slice(0, 8).toUpperCase();
 
     formStatus.textContent = "保存中...";
     formStatus.classList.remove("error");
 
     try {
-      await db.collection("notes").doc(id).set({
+      await docRef.set({
         id,
         name,
         team,
@@ -1039,6 +1311,7 @@
 
   // ==== データ保存（CSVダウンロード） ====
   exportBtn.addEventListener("click", () => {
+    if (!isTeacher) return;
     if (notes.length === 0) {
       alert("保存するデータがありません。");
       return;
@@ -1113,6 +1386,7 @@
 
   // ==== いいね一括リセット ====
   resetLikesBtn.addEventListener("click", async () => {
+    if (!isTeacher) return;
     if (notes.length === 0) {
       alert("リセットするいいねがありません。");
       return;
@@ -1125,7 +1399,7 @@
     resetLikesBtn.textContent = "リセット中...";
 
     try {
-      const snapshot = await db.collection("notes").get();
+      const snapshot = await notesCollection().get();
       const batch = db.batch();
       snapshot.forEach((doc) => {
         batch.update(doc.ref, { likes: 0 });
@@ -1143,6 +1417,7 @@
 
   // ==== データ削除（全削除） ====
   clearBtn.addEventListener("click", async () => {
+    if (!isTeacher) return;
     if (notes.length === 0) {
       alert("削除するデータがありません。");
       return;
@@ -1158,7 +1433,7 @@
     clearBtn.textContent = "削除中...";
 
     try {
-      const snapshot = await db.collection("notes").get();
+      const snapshot = await notesCollection().get();
       const batch = db.batch();
       snapshot.forEach((doc) => batch.delete(doc.ref));
       await batch.commit();
@@ -1373,8 +1648,8 @@
             e.stopPropagation();
             likeBtn.disabled = true;
             try {
-              await db.collection("notes")
-                .doc(n.id)
+              await notesCollection()
+                .doc(n.docId)
                 .update({ likes: firebase.firestore.FieldValue.increment(1) });
             } catch (err) {
               console.error(err);
@@ -1394,7 +1669,7 @@
             const ok = confirm(`このデータ（${n.id}）を削除しますか？`);
             if (!ok) return;
             try {
-              await db.collection("notes").doc(n.id).delete();
+              await notesCollection().doc(n.docId).delete();
             } catch (err) {
               console.error(err);
               alert("削除中にエラーが発生しました。");
@@ -1402,7 +1677,7 @@
           });
 
           footerEl.appendChild(likeBtn);
-          footerEl.appendChild(delBtn);
+          if (isTeacher) footerEl.appendChild(delBtn);
 
           // ID
           const idEl = document.createElement("div");
@@ -1522,6 +1797,10 @@
 
   // ==== Gemini で分類 ====
   async function classifyNotes() {
+    if (!isTeacher) {
+      alert("分類は授業を作成した教員だけが実行できます。");
+      return;
+    }
     if (notes.length === 0) {
       alert("分類するデータがありません。");
       return;
@@ -1634,7 +1913,7 @@
 
       const batch = db.batch();
       notes.forEach((n) => {
-        const ref = db.collection("notes").doc(n.id);
+        const ref = notesCollection().doc(n.docId);
         batch.update(ref, { category: n.category });
       });
       await batch.commit();
