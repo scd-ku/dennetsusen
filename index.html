@@ -643,8 +643,8 @@
   <!-- ダミーフォーム: Enter で勝手に送信されないように -->
   <form class="toolbar" onsubmit="return false;">
     <div class="toolbar-group">
-      <label for="apiKey">Gemini APIキー</label>
-      <input id="apiKey" type="password" placeholder="AIza..." autocomplete="off" />
+      <label for="apiKey">Gemini APIキー（この端末のみ）</label>
+      <input id="apiKey" type="password" placeholder="AIza..." autocomplete="off" autocapitalize="off" spellcheck="false" />
     </div>
     <div class="toolbar-group">
       <label for="categories">カテゴリ一覧</label>
@@ -788,7 +788,7 @@
       <li>班・ニクロム線の太さと長さ・電池のつなぎ方・水温・電圧・電流をまとめて記録できます。</li>
       <li>開始値と終了値から、上昇温度と平均電圧・平均電流を用いた電力を表示します。</li>
       <li>入力したデータを黒板風のボードに共有し、いいね・削除・CSV保存ができます。</li>
-      <li>Gemini APIキーとカテゴリを指定すると、記録内容を指定したカテゴリへ分類できます。</li>
+      <li>Gemini APIキーとカテゴリを指定すると、記録内容を指定したカテゴリへ分類できます。入力したGeminiキーはFirestoreやCSVには保存しません。</li>
       <li>左上のQRアイコンから、このアプリの参加用URLを大きなQRコードで表示できます。</li>
     </ul>
     <h3>使い方</h3>
@@ -798,7 +798,7 @@
       <li>AIで整理する場合はGemini APIキーとカテゴリ一覧を入力し、「分類する」を押します。</li>
       <li>「全データを保存」でCSVを書き出せます。「いいねをリセット」「全データを削除」は共有データ全体に作用します。</li>
     </ol>
-    <p>授業で利用するときは、全データ削除やAPIキーの取り扱いに注意してください。</p>
+    <p>授業で利用するときは、全データ削除やAPIキーの取り扱いに注意してください。共通のGeminiキーを生徒へ配布する運用は避け、共有運用ではFirebase AI Logic + App Checkなど、キーをクライアントへ露出しない構成を推奨します。</p>
     <div class="help-actions">
       <button id="helpClose" class="btn-ghost" type="button">閉じる</button>
     </div>
@@ -864,6 +864,10 @@
   });
 
   // ==== Firebase 設定 ====
+  // Firebase Web API key は Firebase サービス用の公開クライアント設定です。
+  // 認可には使用せず、Google Cloud 側で Firebase 関連 API のみに制限し、
+  // Firestore Security Rules / App Check でデータとバックエンドを保護してください。
+  // このキーを Gemini Developer API 用キーとして再利用しないでください。
   const firebaseConfig = {
     apiKey: "AIzaSyCPgjXJw9HQ2AUMzgN4O16s7UYjDllO87I",
     authDomain: "aifusen-class.firebaseapp.com",
@@ -1526,6 +1530,10 @@
     const apiKey = apiKeyInput.value.trim();
     if (!apiKey) {
       alert("Gemini APIキーを入力してください。");
+      return;
+    }
+    if (apiKey === firebaseConfig.apiKey) {
+      alert("Firebase Web APIキーはGemini APIキーとして使用できません。Gemini用の別キーを使用してください。");
       return;
     }
 
