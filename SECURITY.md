@@ -20,7 +20,7 @@ The repository cannot enforce Firestore security by hiding the Firebase Web API 
 
 Review the deployed Firestore Security Rules in Firebase Console. Avoid blanket production rules such as `allow read, write: if true;`.
 
-For this classroom app, use rules that match the intended roles and operations. In particular, destructive actions such as deleting all records or resetting data should be limited to a teacher/admin role rather than every anonymous visitor.
+This repository now includes `firestore.rules`. Each classroom is stored under `rooms/{roomId}`. The anonymous Firebase UID that creates the room is recorded as `ownerUid`; only that UID can classify, reset, or delete data. Other anonymously authenticated participants may create notes, read the room's notes, and increment `likes` by one.
 
 Enable Firebase App Check for Firestore where practical to reduce abuse from unauthorized clients.
 
@@ -39,3 +39,12 @@ GitHub may flag a Firebase Web API key because it matches a generic Google API k
 Do not resolve that alert until you have confirmed the restrictions above. If the key is intentionally public, restricted to Firebase-related APIs, and not usable for Generative Language API, document that fact when resolving the alert.
 
 If the detected value is instead a Gemini API key or another true secret, rotate/revoke it immediately. Removing it from the latest file is not sufficient because it remains in Git history.
+
+
+## Anonymous classroom ownership
+
+No Google account or manual teacher approval is required. Firebase Anonymous Authentication creates a local anonymous identity automatically.
+
+The room creator's UID is stored as `ownerUid`. This is intentionally bound to the browser profile. Clearing site data, using private browsing, or moving to another device can result in loss of teacher access to an existing room.
+
+Do not weaken `firestore.rules` to work around a lost teacher identity. Create a new room instead and export classroom data before ending a session when retention is important.
