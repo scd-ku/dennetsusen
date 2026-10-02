@@ -6,6 +6,10 @@
 
 https://scd-ku.github.io/dennetsusen/
 
+## Firebase
+
+このリポジトリは専用Firebaseプロジェクト `scd-ku-dennetsusen` を使用します。AIふせん・Slide FusenとはFirestoreを共有しません。
+
 ## 主な機能
 
 - 班、ニクロム線の太さ・長さ、電池のつなぎ方の記録
