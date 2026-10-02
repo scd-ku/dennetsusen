@@ -26,9 +26,12 @@ service cloud.firestore {
         && request.resource.data.ownerUid == request.auth.uid;
 
       // Room settings can only be changed by the teacher that created it.
-      allow update, delete: if signedIn()
+      allow update: if signedIn()
         && resource.data.ownerUid == request.auth.uid
         && request.resource.data.ownerUid == resource.data.ownerUid;
+
+      allow delete: if signedIn()
+        && resource.data.ownerUid == request.auth.uid;
 
       match /notes/{noteId} {
         // Anyone who knows the room code and is anonymously authenticated
