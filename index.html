@@ -972,6 +972,8 @@
   let currentRoomId = null;
   let isTeacher = false;
   let unsubscribeNotes = null;
+  let authReady = false;
+  let authSetupError = null;
 
   function roomRef(roomId = currentRoomId) {
     return db.collection("rooms").doc(roomId);
@@ -1029,6 +1031,12 @@
   const copyStudentUrlBtn = document.getElementById("copyStudentUrlBtn");
 
   const GEMINI_MODEL = "gemini-2.5-flash";
+
+  createRoomBtn.disabled = true;
+  joinRoomBtn.disabled = true;
+  addBtn.disabled = true;
+  roleBadge.textContent = "認証準備中";
+  roomNotice.textContent = "Firebase匿名認証を準備しています。";
 
   // ==== 授業ルーム / 匿名認証 ====
   const ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -1133,8 +1141,12 @@
   }
 
   async function createRoom() {
-    if (!currentUser) {
-      alert("Firebaseの準備中です。");
+    if (authSetupError) {
+      alert(authSetupError);
+      return;
+    }
+    if (!authReady || !currentUser) {
+      alert("Firebaseの匿名認証を準備しています。数秒待ってからもう一度お試しください。");
       return;
     }
 
@@ -1199,14 +1211,40 @@
         await auth.signInAnonymously();
       } catch (error) {
         console.error(error);
-        roleBadge.textContent = "設定が必要";
-        roomNotice.textContent = "Firebase Authenticationで匿名認証を有効にしてください。";
+        authReady = false;
+        currentUser = null;
+
+        if (error && error.code === "auth/configuration-not-found") {
+          authSetupError =
+            "Firebase Authenticationの設定がまだ完了していません。\n\n" +
+            "Firebase Console → Authentication → Sign-in method → Anonymous を有効にして保存してください。";
+        } else if (error && error.code === "auth/operation-not-allowed") {
+          authSetupError =
+            "Firebaseの匿名認証が無効です。\n\n" +
+            "Firebase Console → Authentication → Sign-in method → Anonymous を有効にして保存してください。";
+        } else {
+          authSetupError =
+            "Firebase Authenticationに接続できませんでした。\n" +
+            "Firebase ConsoleのAuthentication設定とネットワーク接続を確認してください。";
+        }
+
+        roleBadge.textContent = "Firebase設定が必要";
+        roomNotice.textContent = authSetupError.replace(/\n/g, " ");
+        createRoomBtn.disabled = false;
+        createRoomBtn.textContent = "Firebase設定を確認";
+        joinRoomBtn.disabled = true;
         addBtn.disabled = true;
       }
       return;
     }
 
+    authSetupError = null;
+    authReady = true;
     currentUser = user;
+    createRoomBtn.disabled = false;
+    createRoomBtn.textContent = "新しい授業を始める";
+    joinRoomBtn.disabled = false;
+
     const roomFromUrl = new URL(window.location.href).searchParams.get("room");
     if (roomFromUrl) {
       try {
