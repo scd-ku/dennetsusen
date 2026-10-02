@@ -1,0 +1,1649 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <!-- Firebase SDK（互換版）-->
+  <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore-compat.js"></script>
+  <!-- QRコード生成ライブラリ -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<head>
+  <meta charset="UTF-8" />
+  <title>電熱線データ集計ボード - Gemini分類版</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    :root {
+      --bg: #f5f5f5;          /* 白＋ごく薄いグレー基調 */
+      --card: #ffffff;
+      --ink: #222222;
+      --accent: #555555;      /* ボタンなどのアクセントもグレー系に */
+      --accent-soft: #e5e5e5; /* バッジなどの淡いグレー */
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      /* 青みをやめてモノトーンのやわらかいグラデーションに */
+      background: radial-gradient(circle at top, #ffffff 0, #f5f5f5 40%, #e5e5e5 100%);
+      color: var(--ink);
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(12px);
+      background: rgba(255, 255, 255, 0.9);
+      border-bottom: 1px solid #d4d4d8; /* グレー系に */
+      padding: 8px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* QRアイコンボタン */
+    .qr-button {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid #d4d4d8; /* モノトーン */
+      background: #ffffff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      cursor: pointer;
+    }
+    .qr-button:hover {
+      box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.06); /* 青系の光沢をやめる */
+    }
+    .qr-icon {
+      width: 20px;
+      height: 20px;
+      /* QR自体は黒と白だけなのでそのまま */
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' fill='%23ffffff'/><rect x='3' y='3' width='14' height='14' fill='none' stroke='%23000000' stroke-width='3'/><rect x='23' y='3' width='14' height='14' fill='none' stroke='%23000000' stroke-width='3'/><rect x='3' y='23' width='14' height='14' fill='none' stroke='%23000000' stroke-width='3'/><rect x='7' y='7' width='6' height='6' fill='%23000000'/><rect x='27' y='7' width='6' height='6' fill='%23000000'/><rect x='7' y='27' width='6' height='6' fill='%23000000'/><rect x='22' y='22' width='4' height='4' fill='%23000000'/><rect x='30' y='22' width='3' height='7' fill='%23000000'/><rect x='22' y='30' width='7' height='3' fill='%23000000'/></svg>");
+      background-size: cover;
+      background-position: center;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+      flex: 1;
+    }
+    .toolbar-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    label {
+      font-size: 0.8rem;
+      color: #555555; /* 青みのあるグレーから中性グレーへ */
+      white-space: nowrap;
+    }
+    input[type="text"],
+    input[type="password"],
+    input[type="number"],
+    select {
+      font: inherit;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid #d4d4d8;  /* 青みを消す */
+      min-width: 120px;
+      background: #fff;
+      outline: none;
+    }
+    input[type="text"]:focus,
+    input[type="password"]:focus,
+    input[type="number"]:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.06); /* 中性の淡い影 */
+    }
+    button {
+      font: inherit;
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .btn-primary {
+      background: var(--accent);  /* グレーの実験室ボタン */
+      color: #fff;
+    }
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid #d4d4d8;
+      color: #555555;
+    }
+    .btn-ghost-danger {
+      background: transparent;
+      border: 1px solid #fecaca;
+      color: #b91c1c;
+    }
+    /* 送信ボタンの紙飛行機アイコン */
+    .send-icon {
+      width: 22px;
+      height: 22px;
+      display: inline-block;
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+      background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMiIgaGVpZ2h0PSIyMiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIyIDJMMTEgMTMiLz48cGF0aCBkPSJNMjIgMkwxNSAyMkwxMSAxM0wyIDlMMjIgMloiLz48L3N2Zz4=");
+    }
+
+    /* ホバーでちょっと飛ぶアニメ（お好みで） */
+    button:hover .send-icon {
+      transform: translateX(2px) translateY(-2px);
+      transition: 0.15s ease;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(260px, 380px) minmax(0, 1fr);
+      gap: 16px;
+      padding: 12px 16px 24px;
+    }
+    @media (max-width: 800px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: rgba(255, 255, 255, 0.98);
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06); /* 影も少し弱めに */
+      padding: 14px 16px 16px;
+      border: 1px solid #d4d4d8;
+    }
+    .panel h2 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .panel p.hint {
+      margin: 0 0 10px;
+      font-size: 0.8rem;
+      color: #6b7280;
+    }
+
+    /* 右側パネルを黒板に（ここから下の board-panel 関連は「そのまま」） */
+    .panel.board-panel {
+      background:
+        radial-gradient(circle at 10% 0%, rgba(255,255,255,0.14) 0, transparent 40%),
+        radial-gradient(circle at 90% 100%, rgba(255,255,255,0.06) 0, transparent 45%),
+        linear-gradient(135deg, #253c30 0%, #07130b 70%, #020305 100%);
+      border-color: #3f4f3a;
+      color: #f9fbe7;
+      box-shadow:
+        0 0 0 6px #8b5a2b,
+        0 0 0 10px #d1a66b,
+        0 18px 30px rgba(0,0,0,0.35);
+    }
+    .panel.board-panel h2 {
+      color: #fefce8;
+    }
+    .panel.board-panel p.hint {
+      color: #e5f2d0;
+    }
+    .panel.board-panel .btn-ghost {
+      border-color: rgba(226, 232, 240, 0.7);
+      background: rgba(255, 255, 255, 0.12);
+      color: #f9fafb;
+    }
+    .panel.board-panel .btn-ghost-danger {
+      border-color: rgba(252, 165, 165, 0.85);
+      background: rgba(248, 113, 113, 0.12);
+      color: #fee2e2;
+    }
+
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    .field-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      ;
+    }
+    .field-row > * {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+    .field-row.small-gap {
+      gap: 6px;
+      align-items: center;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 90px;
+      resize: vertical;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid #d4d4d8;
+      font: inherit;
+      outline: none;
+      background: #ffffff;
+    }
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.06);
+    }
+
+    .status {
+      font-size: 0.8rem;
+      color: #6b7280;
+      min-height: 1.2em;
+    }
+    .status.error { color: var(--danger); }
+
+    /* データボード（黒板の上に透明な貼り付けエリア） */
+    .board {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      overflow-x: auto;
+      padding: 10px 4px 4px;
+      border-radius: 14px;
+      background: transparent;
+      box-shadow: none;
+      border: none;
+    }
+
+    .column {
+      flex: 1;
+      min-width: 200px;
+      background: rgba(15, 23, 42, 0.02);
+      border-radius: 14px;
+      padding: 6px 6px 10px;
+      border: 1px dashed rgba(226, 232, 240, 0.25);
+      display: flex;
+      flex-direction: column;
+    }
+    .column-header {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #f9fbe7;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .column-count {
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(248, 250, 252, 0.18);
+      color: #e2f3d2;
+    }
+    .column-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-right: 2px;
+      overflow-y: visible;
+    }
+
+    .note {
+      position: relative;
+      padding: 12px 12px 26px;
+      border-radius: 10px;
+      /* 付箋の色は黒板エリアの雰囲気としてそのまま残しています */
+      background: #fef9c3;
+      box-shadow:
+        0 6px 10px rgba(15, 23, 42, 0.3),
+        inset 0 0 0 1px rgba(148, 163, 184, 0.2);
+      font-size: 0.85rem;
+      transform: rotate(-1.5deg);
+      transform-origin: center;
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+      cursor: default;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      color: #111111;  /* データカード内の文字色は黒 */
+    }
+    .note:nth-child(2n) {
+      transform: rotate(1.3deg);
+      background: #bfdbfe;
+    }
+    .note:nth-child(3n) {
+      transform: rotate(-0.8deg);
+      background: #bbf7d0;
+    }
+    .note:hover {
+      transform: translateY(-2px) scale(1.01);
+      box-shadow:
+        0 10px 18px rgba(0, 0, 0, 0.4),
+        inset 0 0 0 1px rgba(148, 163, 184, 0.25);
+    }
+    .note-author {
+      font-weight: 600;
+      font-size: 0.8rem;
+      margin-bottom: 4px;
+      color: #1e293b;
+      display: flex;
+      justify-content: space-between;
+      gap: 4px;
+    }
+    .note-category {
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.12);
+      color: #020617;
+    }
+    .note-text {
+      white-space: pre-wrap;
+      margin-bottom: 4px;
+    }
+    .note-meta {
+      margin-top: 4px;
+      font-size: 0.7rem;
+      color: #475569;
+      line-height: 1.4;
+    }
+
+    .note-footer {
+      margin-top: 6px;
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+      align-items: center;
+      font-size: 0.75rem;
+    }
+    .note-btn {
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      background: rgba(255, 255, 255, 0.8);
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+    .note-btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .note-btn-like {
+      border-color: #bfdbfe;
+      background: #eff6ff;
+    }
+    .note-btn-del {
+      border-color: #fecaca;
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+
+    .note-id {
+      position: absolute;
+      bottom: 4px;
+      right: 6px;
+      font-size: 0.65rem;
+      opacity: 0.5;
+    }
+
+    .badge {
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: var(--accent-soft); /* グレー系バッジに */
+      color: #404040;
+    }
+
+    .chk-label {
+      font-size: 0.8rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+    }
+
+    /* 測定値テーブルの崩れ防止 */
+    .measure-table {
+      display: grid;
+      grid-template-columns: 60px 1fr 1fr 1fr;
+      gap: 6px;
+      width: 100%;
+      margin-top: 4px;
+    }
+    .measure-table input {
+      width: 100%;
+      min-width: 0;
+      padding: 4px 6px;
+      border-radius: 6px;
+      border: 1px solid #d4d4d8;
+      font-size: 0.85rem;
+    }
+    .measure-table div {
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+    }
+
+    /* QRモーダル（リサイズ対応 + QR拡大） */
+    #qrOverlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+    #qrOverlay.active {
+      display: flex;
+    }
+    .qr-modal {
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 16px 20px;
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
+      text-align: center;
+      max-width: 90vw;
+      width: min(90vw, 440px);
+      resize: both;
+      overflow: auto;
+      cursor: default;
+    }
+    .qr-modal h2 {
+      margin: 0 0 4px;
+      font-size: 0.95rem;
+    }
+    .qr-modal p {
+      margin: 0 0 8px;
+      font-size: 0.8rem;
+      color: #6b7280;
+    }
+    #qrContainer {
+      margin: 8px auto 12px;
+      width: 100%;
+      max-width: 600px;
+      aspect-ratio: 1 / 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #qrContainer canvas,
+    #qrContainer img {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    #qrClose {
+      font-size: 0.8rem;
+    }
+        /* カード内に表示する計測値テーブル */
+        .note-measure {
+      margin-top: 6px;
+      padding: 4px 6px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.9);  /* 付箋の上に白い小カード */
+    }
+    .note-measure-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin: 0 0 2px;
+      color: #374151;
+    }
+    .measure-board-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.7rem;
+    }
+    .measure-board-table th,
+    .measure-board-table td {
+      padding: 2px 4px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .measure-board-table thead th {
+      border-bottom: 1px solid rgba(148, 163, 184, 0.6);
+      font-weight: 600;
+    }
+    .measure-board-table tbody tr + tr td,
+    .measure-board-table tbody tr + tr th {
+      border-top: 1px dashed rgba(148, 163, 184, 0.4);
+    }
+    .measure-board-table.secondary th {
+      text-align: center;
+    }
+  
+    /* ヘルプボタン・モーダル */
+    .help-button {
+      flex: 0 0 auto;
+    }
+    .help-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 1.5px solid #222222;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.82rem;
+      font-weight: 700;
+      line-height: 1;
+      color: #222222;
+    }
+    #helpOverlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 60;
+      padding: 20px;
+    }
+    #helpOverlay.active {
+      display: flex;
+    }
+    .help-modal {
+      width: min(92vw, 640px);
+      max-height: 86vh;
+      overflow: auto;
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 20px 22px;
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
+      text-align: left;
+    }
+    .help-modal h2 {
+      margin: 0 0 10px;
+      font-size: 1.05rem;
+    }
+    .help-modal h3 {
+      margin: 16px 0 6px;
+      font-size: 0.9rem;
+    }
+    .help-modal p,
+    .help-modal li {
+      font-size: 0.84rem;
+      line-height: 1.7;
+      color: #3f3f46;
+    }
+    .help-modal ul,
+    .help-modal ol {
+      margin: 6px 0 10px;
+      padding-left: 1.4em;
+    }
+    .help-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 14px;
+    }
+
+    /* 右下クレジット */
+    .copyright {
+      position: fixed;
+      right: 10px;
+      bottom: 8px;
+      z-index: 20;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.82);
+      color: #52525b;
+      font-size: 0.68rem;
+      line-height: 1.2;
+      pointer-events: none;
+      backdrop-filter: blur(6px);
+    }
+    @media (max-width: 800px) {
+      .copyright {
+        position: static;
+        margin: 0 16px 10px;
+        text-align: right;
+        background: transparent;
+      }
+    }
+
+  </style>
+</head>
+
+<body>
+<header>
+  <h1>
+    <button id="qrButton" class="qr-button" type="button" aria-label="QRコードを表示">
+      <span class="qr-icon"></span>
+    </button>
+    <span>電熱線データ集計ボード（Gemini）</span>
+    <button id="helpButton" class="qr-button help-button" type="button" aria-label="特徴と使い方を表示" title="特徴と使い方">
+      <span class="help-icon" aria-hidden="true">?</span>
+    </button>
+  </h1>
+  <!-- ダミーフォーム: Enter で勝手に送信されないように -->
+  <form class="toolbar" onsubmit="return false;">
+    <div class="toolbar-group">
+      <label for="apiKey">Gemini APIキー</label>
+      <input id="apiKey" type="password" placeholder="AIza..." autocomplete="off" />
+    </div>
+    <div class="toolbar-group">
+      <label for="categories">カテゴリ一覧</label>
+      <input id="categories" type="text" value="質問, 感想, 改善案, その他" />
+    </div>
+    <button id="classifyBtn" class="btn-primary" type="button">
+      🔍 分類する
+    </button>
+  </form>
+</header>
+
+<main>
+  <!-- 入力パネル -->
+  <section class="panel">
+    <h2>✍ 新しいデータ</h2>
+    <p class="hint">必要な項目を入力し、個人のデータを追加できます。</p>
+
+    <!-- 名前・班 -->
+    <div class="field-row">
+      <div class="field-group">
+        <label for="nameInput">名前（任意）</label>
+        <input id="nameInput" type="text" placeholder="たろう など" />
+      </div>
+      <div class="field-group">
+        <label for="teamInput">班</label>
+        <select id="teamInput">
+          <option value="">選択</option>
+          <option>1班</option><option>2班</option><option>3班</option>
+          <option>4班</option><option>5班</option><option>6班</option>
+          <option>7班</option><option>8班</option><option>9班</option><option>10班</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- ニクロム線（ラジオボタン） -->
+    <div class="field-group">
+      <label>ニクロム線</label>
+      <div class="field-row small-gap">
+        <label class="chk-label">
+          <input id="nichrome02" type="radio" name="nichromeType" />0.2mm
+        </label>
+        <label class="chk-label">
+          <input id="nichrome04" type="radio" name="nichromeType" />0.4mm
+        </label>
+        <input id="nichromeLen" type="number" min="0" step="1" placeholder="長さ(mm)" />
+      </div>
+    </div>
+
+    <!-- 電池（いずれか1つだけ選択） -->
+    <div class="field-group">
+      <label>電池（どれか1つ）</label>
+      <div class="field-row small-gap">
+        <label class="chk-label">
+          <input id="batSingle" type="radio" name="batteryType" />1個
+        </label>
+        <label class="chk-label">
+          <input id="batSeries" type="radio" name="batteryType" />直列
+        </label>
+        <label class="chk-label">
+          <input id="batParallel" type="radio" name="batteryType" />並列
+        </label>
+      </div>
+    </div>
+
+    <!-- 測定値 -->
+    <div class="field-group">
+      <label>測定値（開始／終了）</label>
+      <div class="measure-table">
+        <div></div><div>水温 ℃</div><div>電圧 V</div><div>電流 A</div>
+
+        <div>開始</div>
+        <input id="s_temp" type="number" step="0.1" />
+        <input id="s_volt" type="number" step="0.1" />
+        <input id="s_amp" type="number" step="0.1" />
+
+        <div>終了</div>
+        <input id="e_temp" type="number" step="0.1" />
+        <input id="e_volt" type="number" step="0.1" />
+        <input id="e_amp" type="number" step="0.1" />
+      </div>
+      <p class="hint">※ 半角数字で小数第1位まで入力できます</p>
+    </div>
+
+    <!-- コメント（任意） -->
+    <div class="field-group">
+      <label for="commentInput">コメント（任意）</label>
+      <textarea id="commentInput" placeholder="ここに意見や感想、質問などを書いてもOKです"></textarea>
+    </div>
+
+    <div class="field-row" style="align-items:center; margin-top:4px; justify-content:flex-end;">
+      <div id="formStatus" class="status"></div>
+      <button id="addBtn" class="btn-primary" type="button">
+        <span>データを送る</span>
+        <span class="send-icon" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <hr style="margin:10px 0; border:none; border-top:1px dashed #e2e8f0;" />
+
+    <p class="hint">
+      上の「分類する」ボタンを押すと、すべてのデータを Gemini が
+      <span class="badge">カテゴリ分類</span>します。
+    </p>
+  </section>
+
+  <!-- ボードパネル（黒板） -->
+  <section class="panel board-panel">
+    <h2>📌 データ集計ボード</h2>
+
+    <!-- 保存・削除・いいねリセットボタン -->
+    <div class="field-row" style="justify-content:flex-end; margin-bottom:4px;">
+      <button id="exportBtn" class="btn-ghost" type="button">💾 全データを保存</button>
+      <button id="resetLikesBtn" class="btn-ghost" type="button">💗 いいねをリセット</button>
+      <button id="clearBtn" class="btn-ghost-danger" type="button">🗑 全データを削除</button>
+    </div>
+
+    <p class="hint" id="boardHint">
+      まだデータがありません。左から追加してください。
+    </p>
+    <div id="board" class="board"></div>
+  </section>
+</main>
+
+<!-- QRコード表示用モーダル -->
+<div id="qrOverlay">
+  <div class="qr-modal">
+    <h2>電熱線データ集計ボード 参加用QRコード</h2>
+    <p>スマホやタブレットでこのQRコードを読み取ってください。</p>
+    <div id="qrContainer"></div>
+    <button id="qrClose" class="btn-ghost" type="button">閉じる</button>
+  </div>
+</div>
+
+
+<!-- ヘルプ表示用モーダル -->
+<div id="helpOverlay" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+  <div class="help-modal">
+    <h2 id="helpTitle">電熱線データ集計ボードの特徴と使い方</h2>
+    <h3>特徴</h3>
+    <ul>
+      <li>班・ニクロム線の太さと長さ・電池のつなぎ方・水温・電圧・電流をまとめて記録できます。</li>
+      <li>開始値と終了値から、上昇温度と平均電圧・平均電流を用いた電力を表示します。</li>
+      <li>入力したデータを黒板風のボードに共有し、いいね・削除・CSV保存ができます。</li>
+      <li>Gemini APIキーとカテゴリを指定すると、記録内容を指定したカテゴリへ分類できます。</li>
+      <li>左上のQRアイコンから、このアプリの参加用URLを大きなQRコードで表示できます。</li>
+    </ul>
+    <h3>使い方</h3>
+    <ol>
+      <li>必要に応じて名前と班を選び、ニクロム線・電池・測定値を入力します。</li>
+      <li>「データを送る」を押すと、共有ボードへ記録が追加されます。</li>
+      <li>AIで整理する場合はGemini APIキーとカテゴリ一覧を入力し、「分類する」を押します。</li>
+      <li>「全データを保存」でCSVを書き出せます。「いいねをリセット」「全データを削除」は共有データ全体に作用します。</li>
+    </ol>
+    <p>授業で利用するときは、全データ削除やAPIキーの取り扱いに注意してください。</p>
+    <div class="help-actions">
+      <button id="helpClose" class="btn-ghost" type="button">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<footer class="copyright">© 2026 Science Communication Design Laboratory, Kagawa University</footer>
+
+<script>
+  // ==== QRコード表示 ====
+  const QR_URL = "https://scd-ku.github.io/dennetsusen/";
+  const qrButton = document.getElementById("qrButton");
+  const qrOverlay = document.getElementById("qrOverlay");
+  const qrClose = document.getElementById("qrClose");
+  const qrContainer = document.getElementById("qrContainer");
+  let qrInstance = null;
+
+  qrButton.addEventListener("click", () => {
+    if (!qrInstance) {
+      qrInstance = new QRCode(qrContainer, {
+        text: QR_URL,
+        width: 360,
+        height: 360
+      });
+    }
+    qrOverlay.classList.add("active");
+  });
+
+  qrClose.addEventListener("click", () => {
+    qrOverlay.classList.remove("active");
+  });
+
+  qrOverlay.addEventListener("click", (e) => {
+    if (e.target === qrOverlay) {
+      qrOverlay.classList.remove("active");
+    }
+  });
+
+  // ==== ヘルプ表示 ====
+  const helpButton = document.getElementById("helpButton");
+  const helpOverlay = document.getElementById("helpOverlay");
+  const helpClose = document.getElementById("helpClose");
+
+  helpButton.addEventListener("click", () => {
+    helpOverlay.classList.add("active");
+  });
+
+  helpClose.addEventListener("click", () => {
+    helpOverlay.classList.remove("active");
+  });
+
+  helpOverlay.addEventListener("click", (e) => {
+    if (e.target === helpOverlay) {
+      helpOverlay.classList.remove("active");
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      qrOverlay.classList.remove("active");
+      helpOverlay.classList.remove("active");
+    }
+  });
+
+  // ==== Firebase 設定 ====
+  const firebaseConfig = {
+    apiKey: "AIzaSyCPgjXJw9HQ2AUMzgN4O16s7UYjDllO87I",
+    authDomain: "aifusen-class.firebaseapp.com",
+    projectId: "aifusen-class",
+    storageBucket: "aifusen-class.appspot.com",
+    messagingSenderId: "414270455525",
+    appId: "1:414270455525:web:95444f14ee8306b6af1e0c",
+    measurementId: "G-H74HN1KZTY"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  // ==== データ管理 ====
+  const notes = [];
+
+  const nameInput = document.getElementById("nameInput");
+  const teamInput = document.getElementById("teamInput");
+  const commentInput = document.getElementById("commentInput");
+
+  const nichrome02 = document.getElementById("nichrome02");
+  const nichrome04 = document.getElementById("nichrome04");
+  const nichromeLen = document.getElementById("nichromeLen");
+
+  const batSingle = document.getElementById("batSingle");
+  const batSeries = document.getElementById("batSeries");
+  const batParallel = document.getElementById("batParallel");
+
+  const sTemp = document.getElementById("s_temp");
+  const sVolt = document.getElementById("s_volt");
+  const sAmp  = document.getElementById("s_amp");
+  const eTemp = document.getElementById("e_temp");
+  const eVolt = document.getElementById("e_volt");
+  const eAmp  = document.getElementById("e_amp");
+
+  const addBtn = document.getElementById("addBtn");
+  const formStatus = document.getElementById("formStatus");
+
+  const apiKeyInput = document.getElementById("apiKey");
+  const categoriesInput = document.getElementById("categories");
+  const classifyBtn = document.getElementById("classifyBtn");
+
+  const exportBtn = document.getElementById("exportBtn");
+  const resetLikesBtn = document.getElementById("resetLikesBtn");
+  const clearBtn = document.getElementById("clearBtn");
+
+  const boardEl = document.getElementById("board");
+  const boardHint = document.getElementById("boardHint");
+
+  let noteCounter = 1;
+  const GEMINI_MODEL = "gemini-2.5-flash";
+
+  // ==== Firestore の notes コレクションをリアルタイムで監視 ====
+  db.collection("notes").orderBy("createdAt")
+    .onSnapshot((snapshot) => {
+      notes.length = 0;
+      snapshot.forEach((doc) => {
+        const d = doc.data();
+        const createdAt =
+          d.createdAt && d.createdAt.toDate ? d.createdAt.toDate() : null;
+
+        notes.push({
+          id: d.id,
+          name: d.name,
+          team: d.team || "",
+          text: d.text || "",
+          category: d.category || "未分類",
+          createdAt,
+          nichrome: d.nichrome || [],
+          nichromeLength: d.nichromeLength || null,
+          battery: d.battery || [],
+          measure: d.measure || null,
+          likes: d.likes || 0
+        });
+      });
+
+      const maxNum = notes.reduce((max, n) => {
+        const num = parseInt(n.id.slice(1), 10);
+        return isNaN(num) ? max : Math.max(max, num);
+      }, 0);
+      noteCounter = maxNum + 1;
+
+      renderBoard();
+    });
+
+  // ==== データを追加（Firestoreに保存） ====
+  addBtn.addEventListener("click", async () => {
+    const name = nameInput.value.trim() || "名無し";
+    const team = teamInput.value.trim();
+    const text = commentInput.value.trim();
+
+    const nichrome = [];
+    if (nichrome02.checked) nichrome.push("0.2mm");
+    if (nichrome04.checked) nichrome.push("0.4mm");
+    const nichromeLength = nichromeLen.value ? Number(nichromeLen.value) : null;
+
+    const battery = [];
+    if (batSingle.checked) battery.push("1個");
+    if (batSeries.checked) battery.push("直列");
+    if (batParallel.checked) battery.push("並列");
+
+    function parseNum(el) {
+      return el.value !== "" ? Number(el.value) : null;
+    }
+    const measure = {
+      start: {
+        temp: parseNum(sTemp),
+        volt: parseNum(sVolt),
+        amp:  parseNum(sAmp)
+      },
+      end: {
+        temp: parseNum(eTemp),
+        volt: parseNum(eVolt),
+        amp:  parseNum(eAmp)
+      }
+    };
+
+    const id = `N${String(noteCounter).padStart(3, "0")}`;
+    noteCounter++;
+
+    formStatus.textContent = "保存中...";
+    formStatus.classList.remove("error");
+
+    try {
+      await db.collection("notes").doc(id).set({
+        id,
+        name,
+        team,
+        text,
+        category: "未分類",
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        nichrome,
+        nichromeLength,
+        battery,
+        measure,
+        likes: 0
+      });
+
+      commentInput.value = "";
+      nichrome02.checked = false;
+      nichrome04.checked = false;
+      nichromeLen.value = "";
+      batSingle.checked = batSeries.checked = batParallel.checked = false;
+      sTemp.value = sVolt.value = sAmp.value = "";
+      eTemp.value = eVolt.value = eAmp.value = "";
+
+      formStatus.textContent = "データを追加しました。";
+      setTimeout(() => (formStatus.textContent = ""), 1500);
+    } catch (e) {
+      console.error(e);
+      formStatus.textContent = "保存中にエラーが発生しました。";
+      formStatus.classList.add("error");
+    }
+  });
+
+  // Cmd/Ctrl+Enter でデータ追加
+  commentInput.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      addBtn.click();
+    }
+  });
+
+  // ==== CSVエスケープ ====
+  function csvEscape(value) {
+    const v = (value ?? "").toString().replace(/"/g, '""');
+    return `"${v}"`;
+  }
+
+  // ==== データ保存（CSVダウンロード） ====
+  exportBtn.addEventListener("click", () => {
+    if (notes.length === 0) {
+      alert("保存するデータがありません。");
+      return;
+    }
+
+    const header = [
+      "id",
+      "name",
+      "team",
+      "text",
+      "category",
+      "createdAt",
+      "nichrome",
+      "nichromeLength",
+      "battery",
+      "start_temp",
+      "start_volt",
+      "start_amp",
+      "end_temp",
+      "end_volt",
+      "end_amp",
+      "likes"
+    ];
+    const lines = [header.join(",")];
+
+    notes.forEach((n) => {
+      const created =
+        n.createdAt instanceof Date
+          ? n.createdAt.toISOString()
+          : (n.createdAt || "");
+
+      const m = n.measure || { start: {}, end: {} };
+      const row = [
+        n.id,
+        n.name,
+        n.team,
+        n.text,
+        n.category,
+        created,
+        (n.nichrome || []).join("/"),
+        n.nichromeLength ?? "",
+        (n.battery || []).join("/"),
+        m.start?.temp ?? "",
+        m.start?.volt ?? "",
+        m.start?.amp ?? "",
+        m.end?.temp ?? "",
+        m.end?.volt ?? "",
+        m.end?.amp ?? "",
+        n.likes ?? 0
+      ].map(csvEscape).join(",");
+      lines.push(row);
+    });
+
+    const csv = lines.join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    const now = new Date();
+    const pad = (num) => String(num).padStart(2, "0");
+    const filename =
+      `dennetsusen_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_` +
+      `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.csv`;
+
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  // ==== いいね一括リセット ====
+  resetLikesBtn.addEventListener("click", async () => {
+    if (notes.length === 0) {
+      alert("リセットするいいねがありません。");
+      return;
+    }
+    const ok = confirm("すべてのデータの『いいね』を 0 にリセットします。よろしいですか？");
+    if (!ok) return;
+
+    resetLikesBtn.disabled = true;
+    const originalText = resetLikesBtn.textContent;
+    resetLikesBtn.textContent = "リセット中...";
+
+    try {
+      const snapshot = await db.collection("notes").get();
+      const batch = db.batch();
+      snapshot.forEach((doc) => {
+        batch.update(doc.ref, { likes: 0 });
+      });
+      await batch.commit();
+      alert("すべての『いいね』をリセットしました。");
+    } catch (e) {
+      console.error(e);
+      alert("リセット中にエラーが発生しました。コンソールを確認してください。");
+    } finally {
+      resetLikesBtn.disabled = false;
+      resetLikesBtn.textContent = originalText;
+    }
+  });
+
+  // ==== データ削除（全削除） ====
+  clearBtn.addEventListener("click", async () => {
+    if (notes.length === 0) {
+      alert("削除するデータがありません。");
+      return;
+    }
+
+    const ok = confirm(
+      "すべてのデータを削除します。よろしいですか？\n（この操作は元に戻せません）"
+    );
+    if (!ok) return;
+
+    clearBtn.disabled = true;
+    const originalText = clearBtn.textContent;
+    clearBtn.textContent = "削除中...";
+
+    try {
+      const snapshot = await db.collection("notes").get();
+      const batch = db.batch();
+      snapshot.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+      alert("すべてのデータを削除しました。");
+    } catch (e) {
+      console.error(e);
+      alert("削除中にエラーが発生しました。コンソールを確認してください。");
+    } finally {
+      clearBtn.disabled = false;
+      clearBtn.textContent = originalText;
+    }
+  });
+
+   // ==== ボード描画 ====
+   function renderBoard() {
+    boardEl.innerHTML = "";
+    if (notes.length === 0) {
+      boardHint.textContent = "まだデータがありません。左から追加してください。";
+      return;
+    }
+    boardHint.textContent = "";
+
+    const categorySet = new Set();
+    notes.forEach(n => categorySet.add(n.category || "未分類"));
+    const categories = Array.from(categorySet);
+
+    categories.forEach(cat => {
+      const col = document.createElement("div");
+      col.className = "column";
+
+      const header = document.createElement("div");
+      header.className = "column-header";
+      const title = document.createElement("div");
+      title.textContent = cat;
+      const count = document.createElement("div");
+      count.className = "column-count";
+      count.textContent = `${notes.filter(n => n.category === cat).length} 件`;
+      header.appendChild(title);
+      header.appendChild(count);
+      col.appendChild(header);
+
+      const body = document.createElement("div");
+      body.className = "column-body";
+
+      notes
+        .filter(n => n.category === cat)
+        .forEach(n => {
+          const noteEl = document.createElement("div");
+          noteEl.className = "note";
+
+          // 名前・班
+          const authorEl = document.createElement("div");
+          authorEl.className = "note-author";
+          const left = document.createElement("span");
+          left.textContent = n.name;
+          const right = document.createElement("span");
+          right.className = "note-category";
+          right.textContent = n.team || cat;
+          authorEl.appendChild(left);
+          authorEl.appendChild(right);
+
+          // コメント
+          const textEl = document.createElement("div");
+          textEl.className = "note-text";
+          textEl.textContent = n.text;
+
+          // --- ニクロム線・電池（メタ情報）---
+          const metaParts = [];
+
+          if ((n.nichrome && n.nichrome.length) || n.nichromeLength != null) {
+            let s = "ニクロム線: ";
+            if (n.nichrome && n.nichrome.length) {
+              s += n.nichrome.join(" / ");
+            }
+            if (n.nichromeLength != null && n.nichromeLength !== "") {
+              if (n.nichrome && n.nichrome.length) s += " / ";
+              s += `長さ: ${n.nichromeLength}mm`;
+            }
+            metaParts.push(s);
+          }
+
+          if (n.battery && n.battery.length) {
+            metaParts.push("電池: " + n.battery.join(" / "));
+          }
+
+          let metaEl = null;
+          if (metaParts.length) {
+            metaEl = document.createElement("div");
+            metaEl.className = "note-meta";
+            metaEl.textContent = metaParts.join("　");
+          }
+
+          // --- 計測値（表＋上昇温度／電力）---
+          let measureWrapper = null;
+
+          if (n.measure) {
+            const m = n.measure;
+            const start = m.start || {};
+            const end   = m.end   || {};
+
+            const hasStart = (
+              start.temp !== null && start.temp !== undefined ||
+              start.volt !== null && start.volt !== undefined ||
+              start.amp  !== null && start.amp  !== undefined
+            );
+            const hasEnd = (
+              end.temp !== null && end.temp !== undefined ||
+              end.volt !== null && end.volt !== undefined ||
+              end.amp  !== null && end.amp  !== undefined
+            );
+
+            // 数値フォーマット用ヘルパー
+            const fmt = (v, digits = 1) => {
+              if (v === null || v === undefined || v === "") return "-";
+              const num = Number(v);
+              if (Number.isNaN(num)) return "-";
+              return Number(num.toFixed(digits));
+            };
+
+            // 上昇温度と電力の計算
+            let deltaTemp = null;
+            if (start.temp != null && end.temp != null) {
+              deltaTemp = Number(end.temp) - Number(start.temp);
+            }
+
+            let avgVolt = null;
+            if (start.volt != null && end.volt != null) {
+              avgVolt = (Number(start.volt) + Number(end.volt)) / 2;
+            }
+
+            let avgAmp = null;
+            if (start.amp != null && end.amp != null) {
+              avgAmp = (Number(start.amp) + Number(end.amp)) / 2;
+            }
+
+            let power = null;
+            if (avgVolt !== null && avgAmp !== null) {
+              power = avgVolt * avgAmp;   // W = 平均電圧 × 平均電流
+            }
+
+            measureWrapper = document.createElement("div");
+            measureWrapper.className = "note-measure";
+
+            const titleEl = document.createElement("p");
+            titleEl.className = "note-measure-title";
+            titleEl.textContent = "計測値";
+            measureWrapper.appendChild(titleEl);
+
+            // 開始／終了の表
+            if (hasStart || hasEnd) {
+              const table = document.createElement("table");
+              table.className = "measure-board-table";
+              table.innerHTML = `
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>水温 ℃</th>
+                    <th>電圧 V</th>
+                    <th>電流 A</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th>開始</th>
+                    <td>${fmt(start.temp, 1)}</td>
+                    <td>${fmt(start.volt, 2)}</td>
+                    <td>${fmt(start.amp, 2)}</td>
+                  </tr>
+                  <tr>
+                    <th>終了</th>
+                    <td>${fmt(end.temp, 1)}</td>
+                    <td>${fmt(end.volt, 2)}</td>
+                    <td>${fmt(end.amp, 2)}</td>
+                  </tr>
+                </tbody>
+              `;
+              measureWrapper.appendChild(table);
+            }
+
+            // 上昇温度・電力を同じ行の表で表示
+            if (deltaTemp !== null || power !== null) {
+              const table2 = document.createElement("table");
+              table2.className = "measure-board-table secondary";
+              table2.innerHTML = `
+                <thead>
+                  <tr>
+                    <th>上昇温度 ℃</th>
+                    <th>電力 W</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>${fmt(deltaTemp, 2)}</td>
+                    <td>${fmt(power, 2)}</td>
+                  </tr>
+                </tbody>
+              `;
+              measureWrapper.appendChild(table2);
+            }
+          }
+
+          // --- フッター（いいね・削除）---
+          const footerEl = document.createElement("div");
+          footerEl.className = "note-footer";
+
+          const likeBtn = document.createElement("button");
+          likeBtn.type = "button";
+          likeBtn.className = "note-btn note-btn-like";
+          likeBtn.textContent = "💗 " + (n.likes ?? 0);
+
+          likeBtn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            likeBtn.disabled = true;
+            try {
+              await db.collection("notes")
+                .doc(n.id)
+                .update({ likes: firebase.firestore.FieldValue.increment(1) });
+            } catch (err) {
+              console.error(err);
+              alert("いいねの反映中にエラーが発生しました。");
+            } finally {
+              likeBtn.disabled = false;
+            }
+          });
+
+          const delBtn = document.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "note-btn note-btn-del";
+          delBtn.textContent = "🗑 削除";
+
+          delBtn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            const ok = confirm(`このデータ（${n.id}）を削除しますか？`);
+            if (!ok) return;
+            try {
+              await db.collection("notes").doc(n.id).delete();
+            } catch (err) {
+              console.error(err);
+              alert("削除中にエラーが発生しました。");
+            }
+          });
+
+          footerEl.appendChild(likeBtn);
+          footerEl.appendChild(delBtn);
+
+          // ID
+          const idEl = document.createElement("div");
+          idEl.className = "note-id";
+          idEl.textContent = n.id;
+
+          // ===== カード内の表示順 =====
+          noteEl.appendChild(authorEl);           // 名前・班
+          if (metaEl) noteEl.appendChild(metaEl); // ニクロム線・電池
+          if (measureWrapper) noteEl.appendChild(measureWrapper); // 計測値表
+          noteEl.appendChild(textEl);             // コメント
+          noteEl.appendChild(footerEl);           // いいね・削除
+          noteEl.appendChild(idEl);               // ID
+
+          body.appendChild(noteEl);
+        });
+
+      col.appendChild(body);
+      boardEl.appendChild(col);
+    });
+  }
+
+
+  // ==== Gemini に渡す説明テキストを作成 ====
+  function buildClassificationText(n) {
+    const parts = [];
+
+    if (n.name) parts.push(`名前: ${n.name}`);
+    if (n.team) parts.push(`班: ${n.team}`);
+
+    if (n.createdAt instanceof Date) {
+      const d = n.createdAt;
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mi = String(d.getMinutes()).padStart(2, "0");
+      parts.push(`送信日時: ${yyyy}-${mm}-${dd} ${hh}時${mi}分`);
+    }
+
+    if (n.battery && n.battery.length) {
+      parts.push(`電池: ${n.battery.join(" / ")}`);
+    }
+    if (n.nichrome && n.nichrome.length) {
+      parts.push(`ニクロム線: ${n.nichrome.join(" / ")}`);
+    }
+    if (n.nichromeLength != null && n.nichromeLength !== "") {
+      parts.push(`ニクロム線の長さ: ${n.nichromeLength}mm`);
+    }
+
+    if (n.measure) {
+      const m = n.measure;
+      const startArr = [];
+      const endArr = [];
+
+      const start = m.start || {};
+      const end   = m.end   || {};
+
+      if (m.start) {
+        if (m.start.temp != null) startArr.push(`水温${m.start.temp}℃`);
+        if (m.start.volt != null) startArr.push(`電圧${m.start.volt}V`);
+        if (m.start.amp  != null) startArr.push(`電流${m.start.amp}`);
+      }
+      if (m.end) {
+        if (m.end.temp != null) endArr.push(`水温${m.end.temp}℃`);
+        if (m.end.volt != null) endArr.push(`電圧${m.end.volt}V`);
+        if (m.end.amp  != null) endArr.push(`電流${m.end.amp}`);
+      }
+      if (startArr.length) parts.push(`開始測定値: ${startArr.join(", ")}`);
+      if (endArr.length)   parts.push(`終了測定値: ${endArr.join(", ")}`);
+
+      // --- 上昇温度と電力も計算して含める ---
+      let deltaTemp = null;
+      if (start.temp != null && end.temp != null) {
+        deltaTemp = Number(end.temp) - Number(start.temp);
+      }
+
+      let avgVolt = null;
+      if (start.volt != null && end.volt != null) {
+        avgVolt = (Number(start.volt) + Number(end.volt)) / 2;
+      }
+
+      let avgAmp = null;
+      if (start.amp != null && end.amp != null) {
+        avgAmp = (Number(start.amp) + Number(end.amp)) / 2;
+      }
+
+      let power = null;
+      if (avgVolt !== null && avgAmp !== null) {
+        power = avgVolt * avgAmp;
+      }
+
+      const fmt = (v, digits = 2) => {
+        if (v === null || v === undefined || Number.isNaN(Number(v))) return "-";
+        return Number(v).toFixed(digits);
+      };
+
+      if (deltaTemp !== null) {
+        parts.push(`上昇温度: ${fmt(deltaTemp, 2)}℃`);
+      }
+      if (power !== null) {
+        parts.push(`電力: ${fmt(power, 2)}W`);
+      }
+    }
+
+    if (n.text) {
+      parts.push(`コメント: ${n.text}`);
+    }
+
+    if (parts.length === 0) {
+      parts.push(`ID:${n.id}`);
+    }
+
+    return parts.join(" / ");
+  }
+
+
+  // ==== Gemini で分類 ====
+  async function classifyNotes() {
+    if (notes.length === 0) {
+      alert("分類するデータがありません。");
+      return;
+    }
+
+    const apiKey = apiKeyInput.value.trim();
+    if (!apiKey) {
+      alert("Gemini APIキーを入力してください。");
+      return;
+    }
+
+    const categoryText = categoriesInput.value.trim();
+    if (!categoryText) {
+      alert("カテゴリ一覧を入力してください（例：1個, 直列, 並列 / 11時30分〜12時 など）");
+      return;
+    }
+
+    const categories = categoryText.split(",").map(c => c.trim()).filter(Boolean);
+    if (categories.length === 0) {
+      alert("カテゴリが正しく指定されていません。");
+      return;
+    }
+
+    classifyBtn.disabled = true;
+    classifyBtn.textContent = "分類中...";
+
+    try {
+      const payloadNotes = notes.map(n => ({
+        id: n.id,
+        text: buildClassificationText(n)
+      }));
+
+      const prompt =
+        "あなたは理科実験のデータを分類するアシスタントです。\n" +
+        "各 comments[i].text には「名前・班・ニクロム線・電池構成（1個/直列/並列など）・測定値・送信日時・コメント」などをまとめた日本語の1行テキストが入っています。\n" +
+        "与えられた comments 配列の各要素に、日本語の 'category' フィールドを追加してください。\n" +
+        "category は次の中から必ず1つだけ選んでください：\n" +
+        categories.join(" / ") + "\n\n" +
+        "出力は JSON オブジェクトのみとし、余計な説明文やコードブロックマーカーは一切書かないでください。\n" +
+        "形式は次のようにしてください：\n" +
+        "{\"comments\":[{\"id\":\"N001\",\"text\":\"説明文\",\"category\":\"直列\"}, ...]}\n\n" +
+        "それでは、次の comments を分類してください：\n\n" +
+        JSON.stringify({ comments: payloadNotes }, null, 2);
+
+      const url =
+        "https://generativelanguage.googleapis.com/v1beta/models/" +
+        encodeURIComponent(GEMINI_MODEL) +
+        ":generateContent?key=" +
+        encodeURIComponent(apiKey);
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            { parts: [{ text: prompt }] }
+          ],
+          generationConfig: {
+            response_mime_type: "application/json"
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("Gemini API error:", text);
+        throw new Error("APIエラー: " + response.status);
+      }
+
+      const data = await response.json();
+      const candidate = data.candidates && data.candidates[0];
+      if (!candidate || !candidate.content || !candidate.content.parts) {
+        console.error("Unexpected Gemini response:", data);
+        throw new Error("Gemini から期待した応答が得られませんでした。");
+      }
+
+      let jsonText = candidate.content.parts
+        .map(p => p.text || "")
+        .join("")
+        .trim();
+
+      const firstBrace = jsonText.indexOf("{");
+      const lastBrace = jsonText.lastIndexOf("}");
+      if (firstBrace !== -1 && lastBrace !== -1) {
+        jsonText = jsonText.slice(firstBrace, lastBrace + 1);
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(jsonText);
+      } catch (e) {
+        console.error("JSON parse error:", e, jsonText);
+        throw new Error("Gemini の出力を JSON として解釈できませんでした。");
+      }
+
+      const classifiedComments = parsed.comments || [];
+      const map = new Map();
+      classifiedComments.forEach(c => {
+        map.set(c.id, c.category);
+      });
+
+      notes.forEach(n => {
+        const cat = map.get(n.id);
+        if (cat) n.category = cat;
+      });
+
+      const batch = db.batch();
+      notes.forEach((n) => {
+        const ref = db.collection("notes").doc(n.id);
+        batch.update(ref, { category: n.category });
+      });
+      await batch.commit();
+
+      renderBoard();
+      alert("分類が完了しました。");
+    } catch (err) {
+      console.error(err);
+      alert("分類中にエラーが発生しました。コンソールを確認してください。");
+    } finally {
+      classifyBtn.disabled = false;
+      classifyBtn.textContent = "🔍 分類する";
+    }
+  }
+
+  classifyBtn.addEventListener("click", classifyNotes);
+</script>
+
+</body>
+</html>
