@@ -17,6 +17,15 @@ https://scd-ku.github.io/dennetsusen/
 - Gemini APIによるカテゴリ分類
 - 参加用QRコードとアプリ内ヘルプ
 
+## Security
+
+- The Firebase Web API key in `firebaseConfig` is a public client identifier for Firebase services, not an authorization secret.
+- Restrict that key in Google Cloud to the Firebase-related APIs required by this app. Do **not** allow the Generative Language API on the Firebase Web API key.
+- Protect Firestore with Firebase Security Rules and Firebase App Check. Hiding or obfuscating the Firebase Web API key is not a security control.
+- The Gemini API key typed into the UI is not written to Firestore or exported to CSV. Do not commit a Gemini API key to this repository and do not distribute a shared Gemini key to students.
+- For a shared classroom deployment of Gemini features, prefer Firebase AI Logic + App Check (or another server-side proxy) so the Gemini credential remains server-side.
+- See [SECURITY.md](SECURITY.md) for the deployment checklist.
+
 ## License
 
 © 2026 Science Communication Design Laboratory, Kagawa University
